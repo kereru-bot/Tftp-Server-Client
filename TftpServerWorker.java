@@ -45,8 +45,19 @@ class TftpServerWorker extends Thread
 
             //used to indicate if the file length is a multiple of 512 or not
             int finalBytesRead = 0;
-
+            //File file = new File(filename);
+            System.out.println(new File(filename).getAbsolutePath());
             FileInputStream reader = new FileInputStream(filename);
+            //dont leave like this, it's broken
+            //
+
+
+
+
+
+
+
+
 
             int blockNum = 1;
             //since it exists, send
@@ -154,6 +165,7 @@ class TftpServerWorker extends Thread
         catch(FileNotFoundException ex) {
             //send error packet back, saying file not found
             //not sure if error will work properly if concatenated
+            System.out.println(filename + " was not found.");
             String response = filename + " was not found.";
             sendError(response);
             //find way to close socket and reader here
