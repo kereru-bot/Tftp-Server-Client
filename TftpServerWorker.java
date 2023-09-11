@@ -21,8 +21,13 @@ class TftpServerWorker extends Thread
 
     private void sendError(String message) {
         try {
-            message = ERROR + message;
-            byte[] buf = message.getBytes();
+            //byte[] buf = new byte[message.getBytes().length + 1];
+            //byte[0] = ERROR;
+            byte[] buf = new byte[message.getBytes().length + 1];
+            buf[0] = ERROR;
+            byte[] sBytes = message.getBytes();
+            System.arraycopy(sBytes, 0, buf, 1, sBytes.length);
+
             DatagramSocket sock = new DatagramSocket();
             DatagramPacket response = new DatagramPacket(buf, buf.length, senderAddr, senderPort);
             sock.send(response);
@@ -45,11 +50,9 @@ class TftpServerWorker extends Thread
 
             //used to indicate if the file length is a multiple of 512 or not
             int finalBytesRead = 0;
-            //File file = new File(filename);
-            System.out.println(new File(filename).getAbsolutePath());
-            FileInputStream reader = new FileInputStream(filename);
-            //dont leave like this, it's broken
-            //
+
+            FileInputStream reader = new FileInputStream(filename.trim());
+            //maybe works now?
 
 
 
@@ -59,10 +62,12 @@ class TftpServerWorker extends Thread
 
 
 
-            int blockNum = 1;
+
+            byte blockNum = 1;
             //since it exists, send
             byte[] buf = new byte[DATA_BUFF_LENGTH];
 
+            //what is this about?
             byte[] currentBlock = new byte[DATA_BUFF_LENGTH];
             byte[] nextBlock = new byte[DATA_BUFF_LENGTH];
 
@@ -77,12 +82,20 @@ class TftpServerWorker extends Thread
 
             //if -1 then there is no more data
             //will input data stating at the third byte in the array
-            while((bytesRead = reader.read(buf, 2, READ_LENGTH)) != -1) {
+            while((bytesRead = reader.read(buf, 0, READ_LENGTH)) != -1) {
+                byte[] read = new byte[bytesRead + 2];
+                System.out.println("Bytes read: " + bytesRead);
                 finalBytesRead = bytesRead;
+                read[0] = DATA;
+                read[1] = blockNum;
+                System.arraycopy(buf, 0, read, 2, bytesRead);
+
+                System.out.println(new String(read, 0, read.length));
 
                 while(true) {
 
-                    DatagramPacket block = new DatagramPacket(buf, buf.length, senderAddr, senderPort);
+                    //System.out.println(read.length);
+                    DatagramPacket block = new DatagramPacket(read, read.length, senderAddr, senderPort);
 
                     //will attempt to send a packet 5 times
                     //if no response is received, will close connection
@@ -113,11 +126,12 @@ class TftpServerWorker extends Thread
 
                     //check if it's an acknowledgement
                     byte[] data = block.getData();
-                    String response = new String(data);
-                    String rType = response.substring(0,1);
-                    String bNum = response.substring(1);
+                    int rType = data[0];
+                    int bNum = data[1];
 
-                    if(Integer.decode(rType) != ACK) {
+                    String response = null;
+
+                    if(rType != ACK) {
                         //not an acknowledgement
                         //send error
                         //close connection
@@ -129,10 +143,10 @@ class TftpServerWorker extends Thread
                     }
 
                     //if acknowledgement is asking for next block
-                    if(Integer.decode(bNum) == (blockNum + 1)) {
+                    if(bNum == (blockNum + 1)) {
                         break;
                     }
-                    else if(Integer.decode(bNum) != blockNum) {
+                    else if(bNum != blockNum) {
                         response = "Incorrect block number received.";
                         sendError(response);
                         reader.close();
@@ -158,6 +172,7 @@ class TftpServerWorker extends Thread
             }
             //at this point, it should be finished sending
 
+            System.out.println("Succesfully sent file.");
             //be tidy
             reader.close();
             sock.close();
@@ -185,11 +200,10 @@ class TftpServerWorker extends Thread
 
         int length = req.getLength();
         byte[] data = req.getData();
+        int type = data[0];
         String request = new String(data);
 
-        String type = request.substring(0,1);
-
-        if(Integer.decode(type) != RRQ) {
+        if(type != RRQ) {
             //not a properly formatted request
             String response = "Improperly formatted Read Request.";
             sendError(response);
