@@ -63,13 +63,13 @@ class TftpServerWorker extends Thread
 
 
 
-            byte blockNum = 1;
+            int currentBlock = 1;
             //since it exists, send
             byte[] buf = new byte[DATA_BUFF_LENGTH];
 
             //what is this about?
-            byte[] currentBlock = new byte[DATA_BUFF_LENGTH];
-            byte[] nextBlock = new byte[DATA_BUFF_LENGTH];
+            //byte[] currentBlock = new byte[DATA_BUFF_LENGTH];
+            //byte[] nextBlock = new byte[DATA_BUFF_LENGTH];
 
             DatagramSocket sock = new DatagramSocket();
 
@@ -84,28 +84,30 @@ class TftpServerWorker extends Thread
             //will input data stating at the third byte in the array
             while((bytesRead = reader.read(buf, 0, READ_LENGTH)) != -1) {
                 byte[] read = new byte[bytesRead + 2];
-                System.out.println("Bytes read: " + bytesRead);
+                //System.out.println("Bytes read: " + bytesRead);
                 finalBytesRead = bytesRead;
                 read[0] = DATA;
-                read[1] = blockNum;
+                read[1] = (byte)currentBlock;
                 System.arraycopy(buf, 0, read, 2, bytesRead);
 
-                System.out.println(new String(read, 0, read.length));
+                //System.out.println(new String(read, 0, read.length));
 
                 while(true) {
 
                     //System.out.println(read.length);
                     DatagramPacket block = new DatagramPacket(read, read.length, senderAddr, senderPort);
 
+
+                    int attempts = 1;
                     //will attempt to send a packet 5 times
                     //if no response is received, will close connection
                     while(true) {
-                        int attempts = 1;
                         sock.send(block);
-
+                        System.out.println("Sent block " + currentBlock);
                         try {
                             //await a response
                             sock.receive(block);
+                            System.out.println("Recieved response for block " + currentBlock);
                             break;
                         }
                         catch(SocketTimeoutException ex) {
@@ -114,6 +116,7 @@ class TftpServerWorker extends Thread
                                 //stop trying
                                 //close connection
                                 String error = "Connection timed out.";
+                                System.out.println(error);
                                 sendError(error);
                                 sock.close();
                                 return;
@@ -127,7 +130,9 @@ class TftpServerWorker extends Thread
                     //check if it's an acknowledgement
                     byte[] data = block.getData();
                     int rType = data[0];
+                    System.out.println("rType: " + rType);
                     int bNum = data[1];
+                    System.out.println("bNum: " + bNum);
 
                     String response = null;
 
@@ -142,11 +147,17 @@ class TftpServerWorker extends Thread
                         return;
                     }
 
+
                     //if acknowledgement is asking for next block
-                    if(bNum == (blockNum + 1)) {
+                    if(Integer.compareUnsigned(bNum,(currentBlock + 1)) == 0) {
                         break;
                     }
-                    else if(bNum != blockNum) {
+                    else if((bNum % 128) == 0) {
+                        //reset block counter
+                        currentBlock = 0;
+                        break;
+                    }
+                    else if(Integer.compareUnsigned(bNum,currentBlock) != 0) {
                         response = "Incorrect block number received.";
                         sendError(response);
                         reader.close();
@@ -162,11 +173,14 @@ class TftpServerWorker extends Thread
                 //if block number is current block, resent it
                 //if block number is next block, continue
 
-                blockNum++;
+                currentBlock++;
             }
             if(finalBytesRead == 512) {
                 //send a packet with 0 bytes to indicate finishing
-                buf = new byte[0];
+                buf = new byte[3];
+                buf[0] = DATA;
+                buf[1] = (byte)currentBlock;
+                buf[2] = 0;
                 DatagramPacket block = new DatagramPacket(buf, buf.length, senderAddr, senderPort);
                 sock.send(block);
             }
@@ -205,7 +219,7 @@ class TftpServerWorker extends Thread
 
         if(type != RRQ) {
             //not a properly formatted request
-            String response = "Improperly formatted Read Request.";
+            String response = "improperly formatted Read Request.";
             sendError(response);
             return;
         }
