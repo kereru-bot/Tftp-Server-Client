@@ -9,7 +9,7 @@ class TftpClient {
     private static final byte ACK = 3;
     private static final byte ERROR = 4;
 
-    private static final int DATA_BUFF_LENGTH = 512;
+    private static final int DATA_BUFF_LENGTH = 514;
 
 
     public static void main(String[] args) {
@@ -69,19 +69,26 @@ class TftpClient {
             InetAddress serverAddr = null;
             int serverPort = 0;
 
-            FileOutputStream file = new FileOutputStream("filename.txt");
+            FileOutputStream file = new FileOutputStream("filename.png");
             int currentBlock = 1;
 
-            while(true) {
-                byte[] data = null;
-                int type = 0;
-                int blockNum = 0;
-                int length = 0;
+            byte[] data = null;
+            int type = 0;
+            int blockNum = 0;
+            int length = 0;
 
-                sock.send(pack);
+            sock.send(pack);
+
+
+            while(true) {
+
+
+
+                //sock.send(pack);
 
                 while(true) {
                     sock.receive(pack);
+                    System.out.println("Recieved block " + currentBlock);
 
                     serverAddr = pack.getAddress();
                     serverPort = pack.getPort();
@@ -92,55 +99,70 @@ class TftpClient {
                     data = pack.getData();
 
                     type = data[0];
-                    blockNum = data[1];
 
-                    if(blockNum == currentBlock - 1) {
-                        //duplicate block, request current block again
-                        sendAck((byte)currentBlock, serverAddr, serverPort);
-                    }
-
-                    if(blockNum != currentBlock) {
-                        System.err.println("Invalid block of data was recieved... Teminating connection.");
-                        sock.close();
+                     //end of file, might not work properly
+                     //might not be needed?
+                    if(data.length == 0) {
+                        System.out.println("End of file reached.");
                         return;
                     }
 
-                    break;
+                    if(type == ERROR) {
+                        String response = new String(data, 1, length - 2);
+                        System.err.println("ERROR: " + response);
+                        sock.close();
+                        return;
+                    }
+                    else if(type != DATA) {
+                        System.err.println("Block recieved was improperly formatted... Terminating connection.");
+                        sock.close();
+                        return;
+                        //imporperly formatted block
+                    }
+
+                    //must be the data block if it reaches here
+
+                    blockNum = data[1];
+
+
+                    //duplicate data, request current block again
+                    if(Integer.compareUnsigned(blockNum,currentBlock - 1) == 0 && blockNum != 1) {
+                        //duplicate block, request current block again
+                        sendAck((byte)currentBlock, serverAddr, serverPort);
+                    }
+                    else {
+                        break;
+                    }
+
                 }
-                //assuming that the correct block was given
 
 
-                //end of file
-                if(data.length == 0) {
-                    break;
-                }
-
-                if(type == ERROR) {
-                    String response = new String(data, 2, length - 2);
-                    System.err.println("ERROR: " + response);
+                if(Integer.compareUnsigned(blockNum,currentBlock) != 0) {
+                    System.err.println("Invalid block of data was recieved... Teminating connection.");
                     sock.close();
                     return;
                 }
-                else if(type != DATA) {
-                    System.err.println("Block recieved was improperly formatted... Terminating connection.");
-                    sock.close();
-                    return;
-                    //imporperly formatted block
-
+                else {
+                    file.write(data, 2, (length - 2));
+                    sendAck((byte)(currentBlock + 1), serverAddr, serverPort);
+                    System.out.println("Requested block: " + (currentBlock + 1));
+                    currentBlock++;
                 }
 
-                file.write(data, 2, (length - 2));
-                //System.out.println(Integer.decode(new String(data, 0, 1)));
-                //System.out.println(new String(data));
 
-                blockNum++;
+                //reset block number
+                if((currentBlock % 128) == 0) {
+                    currentBlock = 1;
+                }
+
 
                 //end of file
-                if(length < 514) {
+                if(length < 512) {
                     break;
                 }
             }
 
+            System.out.println("Finished.");
             sock.close();
             file.close();
 
@@ -161,8 +183,10 @@ class TftpClient {
             byte[] buf = new byte[2];
             buf[0] = ACK;
             buf[1] = blockNum;
+            System.out.println("Should be 3: " + buf[0]);
             DatagramPacket pack = new DatagramPacket(buf, buf.length, ip, portNum);
             sock.send(pack);
+            sock.close();
         }
         catch(IOException ex) {
             System.err.println("IOException: " + ex);
