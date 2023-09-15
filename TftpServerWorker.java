@@ -2,7 +2,9 @@ import java.net.*;
 import java.io.*;
 import java.util.*;
 
-
+/**
+ * A class that can send a file using TFTP, given a request datagram packet
+ *  */
 class TftpServerWorker extends Thread
 {
     private DatagramPacket req;
@@ -14,15 +16,19 @@ class TftpServerWorker extends Thread
     private static final byte DATA = 2;
     private static final byte ACK = 3;
     private static final byte ERROR = 4;
+
+    //bytes to read from a file at a time
     private static final int READ_LENGTH = 512;
+    //max amount of room needed in the buffer
     private static final int DATA_BUFF_LENGTH = 514;
     private static final int TIMEOUT_LENGTH = 1000;
 
-
+    /*
+     * Sends an error to the client with the given message
+     * @param message The error message to send to the client
+     */
     private void sendError(String message) {
         try {
-            //byte[] buf = new byte[message.getBytes().length + 1];
-            //byte[0] = ERROR;
             byte[] buf = new byte[message.getBytes().length + 1];
             buf[0] = ERROR;
             byte[] sBytes = message.getBytes();
@@ -42,61 +48,37 @@ class TftpServerWorker extends Thread
     private void sendFile(String filename)
     {
         try {
-
-            //open a new datagram socket
-            //DatagramSocket sock = new DatagramSocket();
-
             int bytesRead = 0;
 
             //used to indicate if the file length is a multiple of 512 or not
             int finalBytesRead = 0;
 
             FileInputStream reader = new FileInputStream(filename.trim());
-            //maybe works now?
-
-
-
-
-
-
-
-
-
-
             int currentBlock = 1;
-            //since it exists, send
+            int prevBlock = 0;
             byte[] buf = new byte[DATA_BUFF_LENGTH];
-
-            //what is this about?
-            //byte[] currentBlock = new byte[DATA_BUFF_LENGTH];
-            //byte[] nextBlock = new byte[DATA_BUFF_LENGTH];
-
             DatagramSocket sock = new DatagramSocket();
 
-            //set timeout length for sock.receive();
-
-
+            //set timeout length for the socket
             sock.setSoTimeout(TIMEOUT_LENGTH);
-            //maybe i can read in 512 bytes twice and store how much it read
-
 
             //if -1 then there is no more data
-            //will input data stating at the third byte in the array
             while((bytesRead = reader.read(buf, 0, READ_LENGTH)) != -1) {
                 byte[] read = new byte[bytesRead + 2];
                 //System.out.println("Bytes read: " + bytesRead);
                 finalBytesRead = bytesRead;
                 read[0] = DATA;
                 read[1] = (byte)currentBlock;
+                if(prevBlock == 255) {
+                    read[1] = (byte)prevBlock;
+                }
                 System.arraycopy(buf, 0, read, 2, bytesRead);
 
-                //System.out.println(new String(read, 0, read.length));
-
+                //while attempting to send and recieve a packet
                 while(true) {
 
                     //System.out.println(read.length);
                     DatagramPacket block = new DatagramPacket(read, read.length, senderAddr, senderPort);
-
 
                     int attempts = 1;
                     //will attempt to send a packet 5 times
@@ -121,13 +103,10 @@ class TftpServerWorker extends Thread
                                 sock.close();
                                 return;
                             }
-
                             attempts++;
                         }
                     }
-                    //if nothing is recieved, socket timeout exception will occur
 
-                    //check if it's an acknowledgement
                     byte[] data = block.getData();
                     int rType = data[0];
                     System.out.println("rType: " + rType);
@@ -136,10 +115,9 @@ class TftpServerWorker extends Thread
 
                     String response = null;
 
+                    //check if it's an acknowledgement
                     if(rType != ACK) {
-                        //not an acknowledgement
-                        //send error
-                        //close connection
+                        //not an acknowledgement, send error and close connection
                         response = "Improperly formatted acknowledgement.";
                         sendError(response);
                         reader.close();
@@ -147,32 +125,30 @@ class TftpServerWorker extends Thread
                         return;
                     }
 
-
+                    //to convert it to an unsigned int
+                    if(bNum < 0) {
+                        bNum = bNum & 0xff;
+                    }
                     //if acknowledgement is asking for next block
-                    if(Integer.compareUnsigned(bNum,(currentBlock + 1)) == 0) {
+                    if(bNum == (currentBlock + 1)) {
                         break;
                     }
-                    else if((bNum % 128) == 0) {
+                    else if(currentBlock == 255) {
                         //reset block counter
+                        prevBlock = currentBlock;
                         currentBlock = 0;
                         break;
                     }
-                    else if(Integer.compareUnsigned(bNum,currentBlock) != 0) {
+                    else if(bNum != currentBlock) {
                         response = "Incorrect block number received.";
                         sendError(response);
                         reader.close();
                         sock.close();
                         return;
                     }
-                    //if ack is current block
-                    //no nothing
-
+                    //if ack is current block, do nothing to resend file
                 }
-
-                //check block num
-                //if block number is current block, resent it
-                //if block number is next block, continue
-
+                prevBlock = currentBlock;
                 currentBlock++;
             }
             if(finalBytesRead == 512) {
@@ -181,12 +157,12 @@ class TftpServerWorker extends Thread
                 buf[0] = DATA;
                 buf[1] = (byte)currentBlock;
                 buf[2] = 0;
-                DatagramPacket block = new DatagramPacket(buf, buf.length, senderAddr, senderPort);
+                DatagramPacket block = new DatagramPacket(buf, buf.length - 2, senderAddr, senderPort);
                 sock.send(block);
             }
             //at this point, it should be finished sending
 
-            System.out.println("Succesfully sent file.");
+            System.out.println("Succesfully sent file: " + filename);
             //be tidy
             reader.close();
             sock.close();
