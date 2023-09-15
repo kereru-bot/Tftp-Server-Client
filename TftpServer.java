@@ -2,7 +2,9 @@ import java.net.*;
 import java.io.*;
 import java.util.*;
 
-
+/*
+ * A server that implements TFTP for sending files
+ */
 class TftpServer
 {
     public void start_server() {
@@ -16,8 +18,6 @@ class TftpServer
                 ds.receive(p);
                 System.out.println("Request Receieved...");
                 TftpServerWorker worker = new TftpServerWorker(p);
-
-                //if the file exists
                 worker.start();
             }
         }

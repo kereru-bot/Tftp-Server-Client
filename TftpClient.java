@@ -130,10 +130,14 @@ class TftpClient {
                         return;
                     }
 
+                    System.out.println(data.length);
                      //end of file if it's only 2 bytes
-                    if(data.length == 2) {
-                        System.out.println("End of file reached.");
-                        return;
+                    if(length == 3) {
+                       System.out.println("Successfully recieved file: " + filename);
+                       //System.out.println("Finished.");
+                       sock.close();
+                       file.close();
+                       return;
                     }
 
                     blockNum = data[1];

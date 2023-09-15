@@ -45,6 +45,9 @@ class TftpServerWorker extends Thread
         return;
     }
 
+    /**
+     * Attempts to send a file to the sender address and port for this request
+     * @param filename The name of the file to be sent */
     private void sendFile(String filename)
     {
         try {
@@ -53,6 +56,13 @@ class TftpServerWorker extends Thread
             //used to indicate if the file length is a multiple of 512 or not
             int finalBytesRead = 0;
 
+            //File f = new File(filename.trim());
+            //if(!f.exists()) {
+             //   System.out.println(filename + " was not found.");
+             //   String response = filename + " was not found.";
+             //   sendError(response);
+             //   return;
+            //}
             FileInputStream reader = new FileInputStream(filename.trim());
             int currentBlock = 1;
             int prevBlock = 0;
@@ -151,13 +161,15 @@ class TftpServerWorker extends Thread
                 prevBlock = currentBlock;
                 currentBlock++;
             }
+
+            System.out.println(finalBytesRead);
             if(finalBytesRead == 512) {
                 //send a packet with 0 bytes to indicate finishing
                 buf = new byte[3];
                 buf[0] = DATA;
                 buf[1] = (byte)currentBlock;
                 buf[2] = 0;
-                DatagramPacket block = new DatagramPacket(buf, buf.length - 2, senderAddr, senderPort);
+                DatagramPacket block = new DatagramPacket(buf, buf.length, senderAddr, senderPort);
                 sock.send(block);
             }
             //at this point, it should be finished sending
@@ -168,14 +180,10 @@ class TftpServerWorker extends Thread
             sock.close();
         }
         catch(FileNotFoundException ex) {
-            //send error packet back, saying file not found
-            //not sure if error will work properly if concatenated
             System.out.println(filename + " was not found.");
             String response = filename + " was not found.";
             sendError(response);
-            //find way to close socket and reader here
             return;
-
         }
         catch(IOException ex) {
             System.err.println("IOException: " + ex);
@@ -187,14 +195,12 @@ class TftpServerWorker extends Thread
 
     public void run()
     {
-
         int length = req.getLength();
         byte[] data = req.getData();
         int type = data[0];
         String request = new String(data);
 
         if(type != RRQ) {
-            //not a properly formatted request
             String response = "improperly formatted Read Request.";
             sendError(response);
             return;
@@ -203,23 +209,21 @@ class TftpServerWorker extends Thread
         String fName = request.substring(1);
 
         if(fName.length() == 0) {
-            //error, nothing sent
             String response = "No file requested. (Read Request was empty)";
             sendError(response);
             return;
         }
-
-        //excludes the first byte
         sendFile(fName);
-
-        /*
-         * parse the request packet, ensuring that it is a RRQ
-         * and then call sendfile
-         */
 
         return;
     }
 
+    /*
+     * Creates a TftpServerWorked with the given request packet
+     * and uses the address + port in the packet to send data
+     * to the client
+     * @param req The request packet
+     */
     public TftpServerWorker(DatagramPacket req) {
         this.req = req;
         this.senderAddr = req.getAddress();
